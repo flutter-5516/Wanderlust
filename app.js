@@ -7,7 +7,12 @@ const methodOverride = require("method-override");
 //for common propeeties
 const ejsMate = require("ejs-mate");
 const wrapAsync = require("./util/wrapAsync.js");
-const ExpressError=require("./util/ExpressError.js");
+const ExpressError = require("./util/ExpressError.js");
+const Joi = require("joi");
+
+const { reviewSchema } = require("./schema.js");
+
+const Review = require("./models/review.js");
 
 const MONGO_URL = "mongodb://127.0.0.1:27017/wanderlust";
 
@@ -29,6 +34,19 @@ main()
   .catch((err) => {
     console.log(err);
   });
+
+const validateReview = (req, res, next) => {
+  const { error } = reviewSchema.validate(req.body);
+
+  if (error) {
+    let errMsg = error.details.map((el) => el.message).join(",");
+    throw new ExpressError(400, errMsg);
+  } else {
+    next();
+  }
+};
+
+module.exports = validateReview;
 
 //All listings
 app.get("/listings", async (req, res) => {
@@ -84,11 +102,28 @@ app.delete("/listings/:id", async (req, res) => {
   res.redirect("/listings");
 });
 
+app.post(
+  "/listings/:id/reviews",
+  validateReview,
+  wrapAsync(async (req, res) => {
+    let { id } = req.params;
+    //req.params.id due to we pass vallue in mongoose.Types.ObjectId
+    let listing = await Listing.findById(req.params.id);
+    let newReview = new Review(req.body.review);
+
+    listing.reviews.push(newReview);
+
+    await newReview.save();
+    await listing.save();
+
+    console.log("new review saved");
+    res.redirect(`/listings/${id}`);
+  })
+);
+
 app.listen(8080, () => {
   console.log("Listening on port 8080");
 });
-
-
 
 // Error-handling middleware
 app.use((err, req, res, next) => {
